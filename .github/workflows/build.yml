@@ -45,13 +45,6 @@ jobs:
           make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
           echo "=== Build artifacts ==="
           ls -la packages/
-          echo "=== deb info ==="
-          for f in packages/*.deb; do
-            echo "--- $f ---"
-            dpkg-deb -f "$f" 2>/dev/null || true
-            echo "--- contents ---"
-            dpkg-deb -c "$f" 2>/dev/null || true
-          done
           echo "=== dylib architecture ==="
           find .theos/obj -name "*.dylib" -exec file {} \;
           echo "=== arm64e capability bits (应为 0x80) ==="
@@ -71,33 +64,47 @@ jobs:
 
       - name: Verify rootless deb format
         run: |
-          echo "=== 验证 rootless deb 格式 ==="
+          echo "=== 验证 rootless deb 格式（macOS 使用 ar + tar 替代 dpkg-deb）==="
           cd $GITHUB_WORKSPACE/VCamTweak
           DEB=$(ls packages/*.deb 2>/dev/null | head -1)
-          if [ -n "$DEB" ]; then
-            echo "deb 文件: $DEB"
-            # Architecture 必须是 iphoneos-arm64 (rootless 标识)
-            ARCH=$(dpkg-deb -f "$DEB" Architecture 2>/dev/null)
-            echo "Architecture: $ARCH"
-            if [ "$ARCH" = "iphoneos-arm64" ]; then
-              echo "✅ rootless 格式正确"
-            else
-              echo "❌ Architecture 不是 iphoneos-arm64，rootless scheme 未生效"
-              exit 1
-            fi
-            # 检查安装路径前缀（rootless 应为 /var/jb/...）
-            echo "=== 安装路径（应为 /var/jb/...）==="
-            dpkg-deb -c "$DEB"
-            # 验证没有 rootfs 路径（rootful 标识）
-            if dpkg-deb -c "$DEB" | grep -q "\./rootfs/"; then
-              echo "❌ 检测到 ./rootfs/ 路径，这是 rootful 格式，错误！"
-              exit 1
-            else
-              echo "✅ 无 rootfs 路径，确认是 rootless 格式"
-            fi
-          else
+          if [ -z "$DEB" ]; then
             echo "❌ 没找到 deb 文件"
             exit 1
+          fi
+          echo "deb 文件: $DEB"
+          # deb 是 ar 归档，包含 debian-binary / control.tar.* / data.tar.*
+          WORKDIR=$(mktemp -d)
+          cd "$WORKDIR"
+          ar x "$GITHUB_WORKSPACE/VCamTweak/$DEB"
+          echo "=== ar 归档内容 ==="
+          ls -la
+          # 解压 control 提取 Architecture 字段
+          echo "=== control 内容 ==="
+          mkdir control_dir && (tar -xz -f control.tar.gz -C control_dir 2>/dev/null || tar -x -f control.tar -C control_dir 2>/dev/null || true)
+          cat control_dir/control 2>/dev/null || echo "(无法解压 control)"
+          ARCH=$(grep -E "^Architecture:" control_dir/control 2>/dev/null | awk '{print $2}' | tr -d '\r\n')
+          echo "提取到 Architecture: '$ARCH'"
+          if [ "$ARCH" = "iphoneos-arm64" ]; then
+            echo "✅ rootless 格式正确 (Architecture: iphoneos-arm64)"
+          else
+            echo "❌ Architecture 不是 iphoneos-arm64，rootless scheme 未生效"
+            exit 1
+          fi
+          # 检查 data.tar 中的安装路径
+          echo "=== 安装路径（rootless 应为 ./var/jb/...）==="
+          (tar -tz -f data.tar.gz 2>/dev/null || tar -t -f data.tar 2>/dev/null || tar -tJ -f data.tar.xz 2>/dev/null) | head -50
+          # 验证没有 rootfs 路径（rootful 标识）
+          if (tar -tz -f data.tar.gz 2>/dev/null || tar -t -f data.tar 2>/dev/null || tar -tJ -f data.tar.xz 2>/dev/null) | grep -q "\./rootfs/"; then
+            echo "❌ 检测到 ./rootfs/ 路径，这是 rootful 格式，错误！"
+            exit 1
+          else
+            echo "✅ 无 rootfs 路径，确认是 rootless 格式"
+          fi
+          # 验证包含 /var/jb/ 路径
+          if (tar -tz -f data.tar.gz 2>/dev/null || tar -t -f data.tar 2>/dev/null || tar -tJ -f data.tar.xz 2>/dev/null) | grep -q "var/jb/"; then
+            echo "✅ 检测到 var/jb/ 路径，确认是 rootless 格式"
+          else
+            echo "⚠️  未检测到 var/jb/ 路径，请人工检查"
           fi
 
       - name: Upload deb artifact
