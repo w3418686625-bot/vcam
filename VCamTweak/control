@@ -1,8 +1,8 @@
 Package: com.qugen.vcamtweak
 Name: VCamTweak
-Version: 0.0.6
-Architecture: iphoneos-arm64e
-Description: iOS camera replacement tweak (roothide, fat binary, macOS-built)
+Version: 0.0.7
+Architecture: iphoneos-arm64
+Description: iOS camera replacement tweak (rootless, fat binary, macOS-built)
 Maintainer: QuGen
 Author: QuGen
 Section: Tweaks

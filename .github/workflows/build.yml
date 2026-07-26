@@ -33,15 +33,16 @@ jobs:
           rm -rf sdks-master master.zip
           ls ~/theos/sdks/
 
-      - name: Build VCamTweak (roothide scheme)
+      - name: Build VCamTweak (rootless scheme)
         run: |
           export THEOS=~/theos
           export PATH=$THEOS/bin:$PATH
           cd $GITHUB_WORKSPACE/VCamTweak
           make clean || true
           rm -rf packages obj .theos
-          # 使用 roothide scheme 直接生成 roothide 格式 deb，无需 patcher 转换
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide
+          # 使用 rootless scheme 生成 rootless 格式 deb
+          # roothide 用户安装前需用 roothidepatcher 转换
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
           echo "=== Build artifacts ==="
           ls -la packages/
           echo "=== deb info ==="
@@ -68,25 +69,32 @@ jobs:
             fi
           done
 
-      - name: Verify roothide deb format
+      - name: Verify rootless deb format
         run: |
-          echo "=== 验证 roothide deb 格式 ==="
+          echo "=== 验证 rootless deb 格式 ==="
           cd $GITHUB_WORKSPACE/VCamTweak
           DEB=$(ls packages/*.deb 2>/dev/null | head -1)
           if [ -n "$DEB" ]; then
             echo "deb 文件: $DEB"
-            # Architecture 必须是 iphoneos-arm64e (roothide 标识)
+            # Architecture 必须是 iphoneos-arm64 (rootless 标识)
             ARCH=$(dpkg-deb -f "$DEB" Architecture 2>/dev/null)
             echo "Architecture: $ARCH"
-            if [ "$ARCH" = "iphoneos-arm64e" ]; then
-              echo "✅ roothide 格式正确"
+            if [ "$ARCH" = "iphoneos-arm64" ]; then
+              echo "✅ rootless 格式正确"
             else
-              echo "❌ Architecture 不是 iphoneos-arm64e，roothide scheme 未生效"
+              echo "❌ Architecture 不是 iphoneos-arm64，rootless scheme 未生效"
               exit 1
             fi
-            # 检查安装路径前缀
-            echo "=== 安装路径（应为 /var/jb/... 或 jbroot 相对路径）==="
+            # 检查安装路径前缀（rootless 应为 /var/jb/...）
+            echo "=== 安装路径（应为 /var/jb/...）==="
             dpkg-deb -c "$DEB"
+            # 验证没有 rootfs 路径（rootful 标识）
+            if dpkg-deb -c "$DEB" | grep -q "\./rootfs/"; then
+              echo "❌ 检测到 ./rootfs/ 路径，这是 rootful 格式，错误！"
+              exit 1
+            else
+              echo "✅ 无 rootfs 路径，确认是 rootless 格式"
+            fi
           else
             echo "❌ 没找到 deb 文件"
             exit 1
@@ -95,7 +103,7 @@ jobs:
       - name: Upload deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VCamTweak-roothide-deb
+          name: VCamTweak-rootless-deb
           path: VCamTweak/packages/*.deb
           retention-days: 30
 
