@@ -1,0 +1,13 @@
+# 历史调试脚本和二进制产物
+*.sh
+*.deb
+
+# Theos 编译产物
+VCamTweak/.theos/
+VCamTweak/obj/
+VCamTweak/packages/
+
+# 临时文件
+*.log
+*.tmp
+.DS_Store

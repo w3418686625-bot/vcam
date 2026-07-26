@@ -1,0 +1,79 @@
+name: Build VCamTweak
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'VCamTweak/**'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Theos dependencies
+        run: |
+          brew install ldid make perl rsync
+          sudo xcode-select --switch /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Setup Theos
+        run: |
+          git clone --recursive https://github.com/theos/theos.git ~/theos
+          # 下载 iOS SDK
+          mkdir -p ~/theos/sdks
+          cd ~/theos/sdks
+          curl -LO https://github.com/theos/sdks/archive/master.zip
+          unzip -q master.zip
+          mv sdks-master/*.sdk ./
+          rm -rf sdks-master master.zip
+          ls ~/theos/sdks/
+
+      - name: Build VCamTweak
+        run: |
+          export THEOS=~/theos
+          export PATH=$THEOS/bin:$PATH
+          cd $GITHUB_WORKSPACE/VCamTweak
+          make clean || true
+          rm -rf packages obj .theos
+          make package FINALPACKAGE=1
+          echo "=== Build artifacts ==="
+          ls -la packages/
+          echo "=== dylib architecture ==="
+          file .theos/obj/*/VCamTweak.dylib 2>/dev/null || true
+          # 用 otool 检查 caps（关键：arm64e 应该是 0x80）
+          otool -hv .theos/obj/arm64e/VCamTweak.dylib 2>/dev/null || true
+
+      - name: Verify arm64e capability bits
+        run: |
+          echo "=== 验证 arm64e capability bits (应为 0x80) ==="
+          cd $GITHUB_WORKSPACE/VCamTweak
+          # 找到 fat dylib
+          DYLIB=$(find .theos/obj -name "VCamTweak.dylib" -path "*arm64e*" | head -1)
+          if [ -n "$DYLIB" ]; then
+            echo "检查: $DYLIB"
+            otool -hv "$DYLIB"
+            # 检查 caps 字段
+            CAPS=$(otool -hv "$DYLIB" | grep "ARM64" | awk '{print $NF}')
+            echo "arm64e caps: $CAPS"
+          fi
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VCamTweak-deb
+          path: VCamTweak/packages/*.deb
+          retention-days: 30
+
+      - name: Upload dylib artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VCamTweak-dylib
+          path: |
+            VCamTweak/.theos/obj/arm64/VCamTweak.dylib
+            VCamTweak/.theos/obj/arm64e/VCamTweak.dylib
+          retention-days: 30
