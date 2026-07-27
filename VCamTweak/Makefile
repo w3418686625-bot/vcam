@@ -9,6 +9,6 @@ TWEAK_NAME = VCamTweak
 
 VCamTweak_FILES = Tweak.x
 VCamTweak_CFLAGS = -fobjc-arc
-VCamTweak_FRAMEWORKS = AVFoundation CoreMedia CoreVideo
+VCamTweak_FRAMEWORKS = CoreMedia CoreVideo
 
 include $(THEOS_MAKE_PATH)/tweak.mk
