@@ -1,1 +1,1 @@
-{ Filter = { Executables = ( "mediaserverd", "Camera" ); }; }
+{ Filter = { Executables = ( "mediaserverd" ); }; }

@@ -1,8 +1,8 @@
 // VCamTweak - 系统级摄像头替换
-// 注入点：
-//   1. Camera app 进程 - hook AVCaptureDevice/Session（高层 Objective-C API，验证用）
-//   2. mediaserverd 进程 - hook FigCaptureStream（底层私有 API，所有摄像头数据必经）
-// mediaserverd 是系统进程，不受 roothide 应用黑名单影响
+// 注入点：mediaserverd 进程 - hook FigCaptureStream（底层私有 API，所有摄像头数据必经）
+// mediaserverd 是系统进程，不受 roothide 应用黑名单影响，可实现全部 app 摄像头替换
+// 全部 hook 使用 MSHookFunction + %ctor 内 VCamIsMediaServer() 守卫，
+// 不使用 ObjC %hook（Logos hook 自动注册不受进程守卫控制，会导致 SpringBoard 卡死）
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
@@ -316,60 +316,8 @@ static void VCamProbeObjCClasses() {
 }
 
 // ============================================================
-// ObjC hooks（Camera app 进程用，验证注入）
+// 注意：不使用 ObjC %hook（Logos hook 在 dylib 加载时自动注册，
+// 不受 %ctor 中 VCamIsMediaServer() 控制，若 plist 过滤失效会
+// 导致 SpringBoard 等进程被注入后卡死 WatchdogTimeout）。
+// 全部 hook 改用 MSHookFunction，仅在 %ctor 内 mediaserverd 进程中执行。
 // ============================================================
-%hook AVCaptureDevice
-
-+ (AVCaptureDevice *)defaultDeviceWithMediaType:(NSString *)mediaType {
-    AVCaptureDevice *device = %orig;
-    if ([mediaType isEqualToString:AVMediaTypeVideo]) {
-        VCamLog(@"[%@] defaultDeviceWithMediaType:video -> %@", VCamProcessName(), device.localizedName);
-    } else if ([mediaType isEqualToString:AVMediaTypeMuxed]) {
-        VCamLog(@"[%@] defaultDeviceWithMediaType:muxed -> %@", VCamProcessName(), device.localizedName);
-    }
-    return device;
-}
-
-+ (NSArray *)devicesWithMediaType:(NSString *)mediaType {
-    NSArray *devices = %orig;
-    if ([mediaType isEqualToString:AVMediaTypeVideo]) {
-        VCamLog(@"[%@] devicesWithMediaType:video -> count=%lu", VCamProcessName(), (unsigned long)devices.count);
-    }
-    return devices;
-}
-
-%end
-
-%hook AVCaptureSession
-
-- (void)startRunning {
-    VCamLog(@"[%@] AVCaptureSession startRunning (inputs=%lu)", VCamProcessName(), (unsigned long)self.inputs.count);
-    %orig;
-}
-
-- (void)stopRunning {
-    VCamLog(@"[%@] AVCaptureSession stopRunning", VCamProcessName());
-    %orig;
-}
-
-%end
-
-%hook AVCaptureVideoDataOutput
-
-- (void)setSampleBufferDelegate:(id)sampleBufferDelegate queue:(dispatch_queue_t)sampleBufferCallbackQueue {
-    VCamLog(@"[%@] setSampleBufferDelegate: delegate=%@ queue=%@", VCamProcessName(), sampleBufferDelegate, sampleBufferCallbackQueue);
-    %orig;
-}
-
-%end
-
-%hook BWFigCaptureDevice
-
-- (id)initWithFigCaptureDevice:(void *)device {
-    @try {
-        VCamLog(@"[%@] BWFigCaptureDevice initWithFigCaptureDevice: device=%p", VCamProcessName(), device);
-    } @catch (NSException *e) {}
-    return %orig;
-}
-
-%end
