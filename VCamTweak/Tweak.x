@@ -117,74 +117,19 @@ static NSString *VCamProcessName() {
 %end
 
 // ============================================================
-// Hook 4: BWFigCaptureDeviceVendor - mediaserverd 进程 ObjC 类
-//   mediaserverd 中管理摄像头设备的 ObjC 类（oslog 已确认存在）
-//   注意：不 hook dealloc/invalidate（ARC 下危险，会导致 SIGBUS）
+// mediaserverd hook 暂时禁用（导致 SIGBUS 崩溃 + WatchdogTimeout）
+// 等 Camera 进程 hook 稳定后再单独调试 mediaserverd
 // ============================================================
-%hook BWFigCaptureDeviceVendor
-
-- (id)_createDevice:(void *)device clientPID:(int)pid {
-    VCamLog(@"[%@] BWFigCaptureDeviceVendor _createDevice: clientPID=%d device=%p", VCamProcessName(), pid, device);
-    return %orig;
-}
-
-%end
-
-// ============================================================
-// Hook 5: BWFigCaptureDevice - mediaserverd 进程 ObjC 类
-//   mediaserverd 中摄像头设备的 ObjC 包装类
-//   注意：只 hook init，不 hook dealloc/invalidate（ARC 下危险）
-// ============================================================
-%hook BWFigCaptureDevice
-
-- (id)initWithFigCaptureDevice:(void *)device {
-    VCamLog(@"[%@] BWFigCaptureDevice initWithFigCaptureDevice: device=%p", VCamProcessName(), device);
-    return %orig;
-}
-
-%end
-
-// ============================================================
-// Hook 6: FigCaptureStreamSetOutputSink - mediaserverd C 函数
-//   这是 mediaserverd 中视频帧交付的核心回调注册点
-//   所有摄像头帧都通过此回调交付（C 函数指针，非 ObjC）
-//   用 %hookf 而非 %hook
-//   FigCaptureStreamRef 是 CFTypeRef，callback 是帧交付函数指针
-// ============================================================
-// 注意：C 函数 hook 需要符号在链接时可用
-// 如果符号在 CoreMedia 私有 framework 中，可能需要用 dlsym + MSHookFunction
-// 先注释掉，等 ObjC hook 确认生效后再启用
-// typedef void(*FigCaptureStreamOutputCallback)(void *ctx, void *sampleBuffer, void *stream);
-// static FigCaptureStreamOutputCallback orig_FigCaptureStreamSetOutputSink = NULL;
-// %hookf(void, FigCaptureStreamSetOutputSink, void *stream, void *ctx, FigCaptureStreamOutputCallback callback) {
-//     VCamLog(@"[%@] FigCaptureStreamSetOutputSink: stream=%p ctx=%p callback=%p", VCamProcessName(), stream, ctx, (void *)callback);
-//     %orig;
+// %hook BWFigCaptureDeviceVendor
+// - (id)_createDevice:(void *)device clientPID:(int)pid {
+//     VCamLog(@"[%@] BWFigCaptureDeviceVendor _createDevice: clientPID=%d device=%p", VCamProcessName(), pid, device);
+//     return %orig;
 // }
-
-// ============================================================
-// Hook 7: FigCaptureStreamCreate - mediaserverd C 函数（暂注释）
-// ============================================================
-// %hookf(void *, FigCaptureStreamCreate, void *allocator) {
-//     VCamLog(@"[%@] FigCaptureStreamCreate called", VCamProcessName());
-//     void *result = %orig;
-//     VCamLog(@"[%@] FigCaptureStreamCreate -> %p", VCamProcessName(), result);
-//     return result;
+// %end
+//
+// %hook BWFigCaptureDevice
+// - (id)initWithFigCaptureDevice:(void *)device {
+//     VCamLog(@"[%@] BWFigCaptureDevice initWithFigCaptureDevice: device=%p", VCamProcessName(), device);
+//     return %orig;
 // }
-
-// ============================================================
-// Hook 8: FigCaptureSessionCreate - mediaserverd C 函数（暂注释）
-// ============================================================
-// %hookf(void *, FigCaptureSessionCreate, void *allocator) {
-//     VCamLog(@"[%@] FigCaptureSessionCreate called", VCamProcessName());
-//     void *result = %orig;
-//     VCamLog(@"[%@] FigCaptureSessionCreate -> %p", VCamProcessName(), result);
-//     return result;
-// }
-
-// ============================================================
-// Hook 9: FigCaptureSessionSetConfiguration - mediaserverd C 函数（暂注释）
-// ============================================================
-// %hookf(void, FigCaptureSessionSetConfiguration, void *session, void *configuration) {
-//     VCamLog(@"[%@] FigCaptureSessionSetConfiguration: session=%p config=%p", VCamProcessName(), session, configuration);
-//     %orig;
-// }
+// %end
