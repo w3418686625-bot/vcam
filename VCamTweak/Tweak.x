@@ -5,7 +5,11 @@
 // mediaserverd 是系统进程，不受 roothide 应用黑名单影响
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
+#import <CoreVideo/CoreVideo.h>
 #import <objc/runtime.h>
+#import <dlfcn.h>
+#import <libkern/OSAtomic.h>
+#import <substrate.h>
 
 // ============================================================
 // 文件日志：写到两处以确保能读到
