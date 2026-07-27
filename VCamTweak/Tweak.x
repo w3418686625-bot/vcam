@@ -119,18 +119,13 @@ static NSString *VCamProcessName() {
 // ============================================================
 // Hook 4: BWFigCaptureDeviceVendor - mediaserverd 进程 ObjC 类
 //   mediaserverd 中管理摄像头设备的 ObjC 类（oslog 已确认存在）
-//   用于验证 mediaserverd 中 ObjC hook 是否生效
+//   注意：不 hook dealloc/invalidate（ARC 下危险，会导致 SIGBUS）
 // ============================================================
 %hook BWFigCaptureDeviceVendor
 
-- (id)_createDevice:(id)device clientPID:(pid_t)pid {
-    VCamLog(@"[%@] BWFigCaptureDeviceVendor _createDevice: clientPID=%d", VCamProcessName(), pid);
+- (id)_createDevice:(void *)device clientPID:(int)pid {
+    VCamLog(@"[%@] BWFigCaptureDeviceVendor _createDevice: clientPID=%d device=%p", VCamProcessName(), pid, device);
     return %orig;
-}
-
-- (void)_invalidateAndReleaseDevice {
-    VCamLog(@"[%@] BWFigCaptureDeviceVendor _invalidateAndReleaseDevice", VCamProcessName());
-    %orig;
 }
 
 %end
@@ -138,22 +133,13 @@ static NSString *VCamProcessName() {
 // ============================================================
 // Hook 5: BWFigCaptureDevice - mediaserverd 进程 ObjC 类
 //   mediaserverd 中摄像头设备的 ObjC 包装类
+//   注意：只 hook init，不 hook dealloc/invalidate（ARC 下危险）
 // ============================================================
 %hook BWFigCaptureDevice
 
-- (id)initWithFigCaptureDevice:(id)device {
-    VCamLog(@"[%@] BWFigCaptureDevice initWithFigCaptureDevice: %@", VCamProcessName(), [device class]);
+- (id)initWithFigCaptureDevice:(void *)device {
+    VCamLog(@"[%@] BWFigCaptureDevice initWithFigCaptureDevice: device=%p", VCamProcessName(), device);
     return %orig;
-}
-
-- (void)invalidate {
-    VCamLog(@"[%@] BWFigCaptureDevice invalidate", VCamProcessName());
-    %orig;
-}
-
-- (void)dealloc {
-    VCamLog(@"[%@] BWFigCaptureDevice dealloc", VCamProcessName());
-    %orig;
 }
 
 %end
