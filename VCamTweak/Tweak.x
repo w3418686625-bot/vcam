@@ -153,16 +153,22 @@ static NSString *gVideoPath = @"/var/mobile/Media/vcam_replace.mp4";
 static BOOL gReplaceEnabled = YES;
 static volatile int32_t gFrameCount = 0;
 
+static volatile int32_t gVideoSourceInited = 0;
+
 static void VCamInitVideoSource() {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        if ([[NSFileManager defaultManager] fileExistsAtPath:gVideoPath]) {
-            gVideoSource = [[VCamVideoSource alloc] initWithURL:[NSURL fileURLWithPath:gVideoPath]];
-            VCamLog(@"[VCam] Video source loaded: %@", gVideoPath);
-        } else {
-            VCamLog(@"[VCam] Video NOT found: %@", gVideoPath);
-        }
-    });
+    // 懒加载：只在第一次需要时初始化，避免阻塞 mediaserverd 启动
+    if (__sync_bool_compare_and_swap(&gVideoSourceInited, 0, 1)) {
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            @autoreleasepool {
+                if ([[NSFileManager defaultManager] fileExistsAtPath:gVideoPath]) {
+                    gVideoSource = [[VCamVideoSource alloc] initWithURL:[NSURL fileURLWithPath:gVideoPath]];
+                    VCamLog(@"[VCam] Video source loaded: %@", gVideoPath);
+                } else {
+                    VCamLog(@"[VCam] Video NOT found: %@", gVideoPath);
+                }
+            }
+        });
+    }
 }
 
 // ============================================================
@@ -245,6 +251,8 @@ static void VCamProbeSymbols() {
 }
 
 static void VCamProbeObjCClasses() {
+    // 注意：不调用 class_copyMethodList，它会触发类的 +initialize 方法，
+    // 可能导致 mediaserverd 启动卡死（WatchdogTimeout）
     const char *classNames[] = {
         "FigCaptureStream",
         "BWFigCaptureStream",
@@ -258,16 +266,7 @@ static void VCamProbeObjCClasses() {
     for (int i = 0; classNames[i] != NULL; i++) {
         Class cls = objc_getClass(classNames[i]);
         if (cls) {
-            VCamLog(@"[Probe] FOUND ObjC class: %s", classNames[i]);
-            unsigned int methodCount = 0;
-            Method *methods = class_copyMethodList(cls, &methodCount);
-            if (methods) {
-                for (unsigned int j = 0; j < methodCount && j < 40; j++) {
-                    SEL sel = method_getName(methods[j]);
-                    VCamLog(@"[Probe]   -[%s %s]", classNames[i], sel_getName(sel));
-                }
-                free(methods);
-            }
+            VCamLog(@"[Probe] FOUND ObjC class: %s at %p", classNames[i], cls);
         }
     }
 }
@@ -281,11 +280,9 @@ static void VCamProbeObjCClasses() {
                 VCamProcessName(), [[NSProcessInfo processInfo] processIdentifier]);
 
         if (VCamIsMediaServer()) {
-            VCamLog(@"[VCam] In mediaserverd, initializing...");
-            VCamProbeSymbols();
-            VCamProbeObjCClasses();
-            VCamInitVideoSource();
+            VCamLog(@"[VCam] In mediaserverd, hooking (async probe to avoid WatchdogTimeout)...");
 
+            // MSHookFunction 必须同步执行：要在 mediaserverd 调用 FigCaptureStreamSetSink 之前完成 hook
             void *handle = dlopen("/System/Library/Frameworks/CoreMedia.framework/CoreMedia", RTLD_LAZY);
             if (handle) {
                 const char *symNames[] = {
@@ -311,6 +308,15 @@ static void VCamProbeObjCClasses() {
             } else {
                 VCamLog(@"[VCam] Failed to open CoreMedia.framework");
             }
+
+            // Probe 和 VideoSource 初始化改为异步，避免阻塞 mediaserverd 启动导致 WatchdogTimeout
+            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+                @autoreleasepool {
+                    VCamProbeSymbols();
+                    VCamProbeObjCClasses();
+                    VCamInitVideoSource();
+                }
+            });
         }
     }
 }
