@@ -117,19 +117,19 @@ static NSString *VCamProcessName() {
 %end
 
 // ============================================================
-// mediaserverd hook 暂时禁用（导致 SIGBUS 崩溃 + WatchdogTimeout）
-// 等 Camera 进程 hook 稳定后再单独调试 mediaserverd
+// mediaserverd hook（系统级摄像头替换关键）
+//   mediaserverd 是系统进程，所有 app 摄像头数据必经
+//   不受 roothide 应用黑名单影响
+//   只 hook initWithFigCaptureDevice:（最安全），不 hook dealloc/invalidate
+//   用 @try/@catch 包裹防止 SIGBUS
 // ============================================================
-// %hook BWFigCaptureDeviceVendor
-// - (id)_createDevice:(void *)device clientPID:(int)pid {
-//     VCamLog(@"[%@] BWFigCaptureDeviceVendor _createDevice: clientPID=%d device=%p", VCamProcessName(), pid, device);
-//     return %orig;
-// }
-// %end
-//
-// %hook BWFigCaptureDevice
-// - (id)initWithFigCaptureDevice:(void *)device {
-//     VCamLog(@"[%@] BWFigCaptureDevice initWithFigCaptureDevice: device=%p", VCamProcessName(), device);
-//     return %orig;
-// }
-// %end
+%hook BWFigCaptureDevice
+
+- (id)initWithFigCaptureDevice:(void *)device {
+    @try {
+        VCamLog(@"[%@] BWFigCaptureDevice initWithFigCaptureDevice: device=%p", VCamProcessName(), device);
+    } @catch (NSException *e) {}
+    return %orig;
+}
+
+%end
