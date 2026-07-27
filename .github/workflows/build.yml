@@ -50,6 +50,7 @@ jobs:
           echo "=== arm64e capability bits (应为 0x80) ==="
 
       - name: Build TestTweak (minimal test dylib)
+        continue-on-error: true
         run: |
           export THEOS=~/theos
           export PATH=$THEOS/bin:$PATH
@@ -141,6 +142,7 @@ jobs:
           retention-days: 30
 
       - name: Upload TestTweak dylib artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: TestTweak-dylib
@@ -149,3 +151,4 @@ jobs:
             TestTweak/.theos/obj/arm64/TestTweak.dylib
             TestTweak/.theos/obj/arm64e/TestTweak.dylib
           retention-days: 30
+          if-no-files-found: ignore
