@@ -13,6 +13,22 @@
 #import <objc/runtime.h>
 #import <dlfcn.h>
 #import <substrate.h>
+#import <fcntl.h>
+#import <unistd.h>
+#import <string.h>
+
+// ============================================================
+// 标记文件写入：用底层系统调用，不依赖 ObjC 运行时
+// 用于验证 %ctor 是否真的执行
+// ============================================================
+static void VCamWriteMarker(const char *path, const char *msg) {
+    int fd = open(path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd >= 0) {
+        write(fd, msg, strlen(msg));
+        write(fd, "\n", 1);
+        close(fd);
+    }
+}
 
 // ============================================================
 // 日志：NSLog 为主（不阻塞），文件日志低频写入
@@ -250,12 +266,19 @@ static void new_FigCaptureStreamSetSink(void *stream, void *ctx, FigCaptureStrea
 // mediaserverd 启动期间零额外开销
 // ============================================================
 %ctor {
+    // 第一件事：用底层系统调用写标记文件，验证 %ctor 是否执行
+    // 不依赖 ObjC 运行时、不依赖 NSLog
+    VCamWriteMarker("/var/mobile/Media/vcam_ctor_marker.txt", "CTOR_ENTERED");
+    VCamWriteMarker("/var/containers/Shared/SystemGroup/systemgroup.com.apple.mediaserverd/vcam_ctor_marker.txt", "CTOR_ENTERED");
+
     @autoreleasepool {
         // 只用 NSLog，不写文件
         VCamLogNSLog(@"=== VCamTweak loaded: %@ (pid=%d) ===",
                 VCamProcessName(), [[NSProcessInfo processInfo] processIdentifier]);
 
         if (VCamIsMediaServer()) {
+            VCamWriteMarker("/var/mobile/Media/vcam_ctor_marker.txt", "IS_MEDIASERVERD");
+
             // 用 RTLD_DEFAULT 查找符号（mediaserverd 已加载 CoreMedia，无需 dlopen）
             // 避免 dlopen 在启动期间触发重复初始化
             void *sym = dlsym(RTLD_DEFAULT, "FigCaptureStreamSetSink");
@@ -271,19 +294,18 @@ static void new_FigCaptureStreamSetSink(void *stream, void *ctx, FigCaptureStrea
                 }
             }
             if (sym) {
+                VCamWriteMarker("/var/mobile/Media/vcam_ctor_marker.txt", "SYM_FOUND");
                 MSHookFunction(sym,
                               (void *)new_FigCaptureStreamSetSink,
                               (void **)&orig_FigCaptureStreamSetSink);
                 VCamLogNSLog(@"[VCam] HOOKED FigCaptureStreamSetSink at %p", sym);
+                VCamWriteMarker("/var/mobile/Media/vcam_ctor_marker.txt", "HOOK_DONE");
             } else {
                 VCamLogNSLog(@"[VCam] WARNING: FigCaptureStreamSetSink not found!");
+                VCamWriteMarker("/var/mobile/Media/vcam_ctor_marker.txt", "SYM_NOT_FOUND");
             }
-            // 不做任何其他事情！
-            // - 不写文件日志
-            // - 不 dispatch_async
-            // - 不初始化视频源
-            // - 不 Probe 符号
-            // 视频源在第一次帧回调时延迟初始化
+        } else {
+            VCamWriteMarker("/var/mobile/Media/vcam_ctor_marker.txt", "NOT_MEDIASERVERD");
         }
     }
 }
