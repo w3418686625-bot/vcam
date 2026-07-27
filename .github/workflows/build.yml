@@ -48,6 +48,22 @@ jobs:
           echo "=== dylib architecture ==="
           find .theos/obj -name "*.dylib" -exec file {} \;
           echo "=== arm64e capability bits (应为 0x80) ==="
+
+      - name: Build TestTweak (minimal test dylib)
+        run: |
+          export THEOS=~/theos
+          export PATH=$THEOS/bin:$PATH
+          cd $GITHUB_WORKSPACE/TestTweak
+          make clean || true
+          rm -rf packages obj .theos
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+          echo "=== TestTweak artifacts ==="
+          ls -la packages/
+          find .theos/obj -name "*.dylib" -exec file {} \;
+
+      - name: Check VCamTweak dylib architecture
+        run: |
+          cd $GITHUB_WORKSPACE/VCamTweak
           # fat dylib
           FAT=.theos/obj/VCamTweak.dylib
           if [ -f "$FAT" ]; then
@@ -122,4 +138,14 @@ jobs:
             VCamTweak/.theos/obj/VCamTweak.dylib
             VCamTweak/.theos/obj/arm64/VCamTweak.dylib
             VCamTweak/.theos/obj/arm64e/VCamTweak.dylib
+          retention-days: 30
+
+      - name: Upload TestTweak dylib artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestTweak-dylib
+          path: |
+            TestTweak/.theos/obj/TestTweak.dylib
+            TestTweak/.theos/obj/arm64/TestTweak.dylib
+            TestTweak/.theos/obj/arm64e/TestTweak.dylib
           retention-days: 30
