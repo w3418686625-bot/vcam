@@ -172,7 +172,7 @@ typedef void(*FigCaptureStreamOutputCallback)(void *ctx, CMSampleBufferRef sampl
 static FigCaptureStreamOutputCallback orig_OutputCallback = NULL;
 
 static void new_OutputCallback(void *ctx, CMSampleBufferRef sampleBuffer, void *stream) {
-    int32_t count = OSAtomicIncrement32(&gFrameCount);
+    int32_t count = __sync_add_and_fetch(&gFrameCount, 1);
 
     if (gReplaceEnabled && gVideoSource && sampleBuffer) {
         if (count % 60 == 1) {
