@@ -8,7 +8,6 @@
 #import <CoreVideo/CoreVideo.h>
 #import <objc/runtime.h>
 #import <dlfcn.h>
-#import <libkern/OSAtomic.h>
 #import <substrate.h>
 
 // ============================================================
