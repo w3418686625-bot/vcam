@@ -117,39 +117,88 @@ static NSString *VCamProcessName() {
 %end
 
 // ============================================================
-// Hook 4: FigCaptureSession - mediaserverd 进程用（私有 API）
-//   mediaserverd 是系统进程，所有摄像头数据必经
-//   FigCaptureSession 是 CoreMedia 私有类，处理实际捕获
-//   如果类不存在（非 mediaserverd 进程），hook 静默失败
+// Hook 4: BWFigCaptureDeviceVendor - mediaserverd 进程 ObjC 类
+//   mediaserverd 中管理摄像头设备的 ObjC 类（oslog 已确认存在）
+//   用于验证 mediaserverd 中 ObjC hook 是否生效
 // ============================================================
-%hook FigCaptureSession
+%hook BWFigCaptureDeviceVendor
 
-- (void)startRunning {
-    VCamLog(@"[%@] FigCaptureSession startRunning", VCamProcessName());
-    %orig;
+- (id)_createDevice:(id)device clientPID:(pid_t)pid {
+    VCamLog(@"[%@] BWFigCaptureDeviceVendor _createDevice: clientPID=%d", VCamProcessName(), pid);
+    return %orig;
 }
 
-- (void)stopRunning {
-    VCamLog(@"[%@] FigCaptureSession stopRunning", VCamProcessName());
-    %orig;
-}
-
-- (void)setConfiguration:(id)configuration {
-    VCamLog(@"[%@] FigCaptureSession setConfiguration: %@", VCamProcessName(), [configuration class]);
+- (void)_invalidateAndReleaseDevice {
+    VCamLog(@"[%@] BWFigCaptureDeviceVendor _invalidateAndReleaseDevice", VCamProcessName());
     %orig;
 }
 
 %end
 
 // ============================================================
-// Hook 5: FigCaptureVideoDataOutput - mediaserverd 帧输出
-//   适用于 mediaserverd 中处理视频帧的私有类
+// Hook 5: BWFigCaptureDevice - mediaserverd 进程 ObjC 类
+//   mediaserverd 中摄像头设备的 ObjC 包装类
 // ============================================================
-%hook FigCaptureVideoDataOutput
+%hook BWFigCaptureDevice
 
-- (void)setSampleBufferDelegate:(id)delegate queue:(dispatch_queue_t)queue {
-    VCamLog(@"[%@] FigCaptureVideoDataOutput setSampleBufferDelegate: %@ queue=%@", VCamProcessName(), delegate, queue);
+- (id)initWithFigCaptureDevice:(id)device {
+    VCamLog(@"[%@] BWFigCaptureDevice initWithFigCaptureDevice: %@", VCamProcessName(), [device class]);
+    return %orig;
+}
+
+- (void)invalidate {
+    VCamLog(@"[%@] BWFigCaptureDevice invalidate", VCamProcessName());
+    %orig;
+}
+
+- (void)dealloc {
+    VCamLog(@"[%@] BWFigCaptureDevice dealloc", VCamProcessName());
     %orig;
 }
 
 %end
+
+// ============================================================
+// Hook 6: FigCaptureStreamSetOutputSink - mediaserverd C 函数
+//   这是 mediaserverd 中视频帧交付的核心回调注册点
+//   所有摄像头帧都通过此回调交付（C 函数指针，非 ObjC）
+//   用 %hookf 而非 %hook
+//   FigCaptureStreamRef 是 CFTypeRef，callback 是帧交付函数指针
+// ============================================================
+// 注意：C 函数 hook 需要符号在链接时可用
+// 如果符号在 CoreMedia 私有 framework 中，可能需要用 dlsym + MSHookFunction
+// 先注释掉，等 ObjC hook 确认生效后再启用
+// typedef void(*FigCaptureStreamOutputCallback)(void *ctx, void *sampleBuffer, void *stream);
+// static FigCaptureStreamOutputCallback orig_FigCaptureStreamSetOutputSink = NULL;
+// %hookf(void, FigCaptureStreamSetOutputSink, void *stream, void *ctx, FigCaptureStreamOutputCallback callback) {
+//     VCamLog(@"[%@] FigCaptureStreamSetOutputSink: stream=%p ctx=%p callback=%p", VCamProcessName(), stream, ctx, (void *)callback);
+//     %orig;
+// }
+
+// ============================================================
+// Hook 7: FigCaptureStreamCreate - mediaserverd C 函数（暂注释）
+// ============================================================
+// %hookf(void *, FigCaptureStreamCreate, void *allocator) {
+//     VCamLog(@"[%@] FigCaptureStreamCreate called", VCamProcessName());
+//     void *result = %orig;
+//     VCamLog(@"[%@] FigCaptureStreamCreate -> %p", VCamProcessName(), result);
+//     return result;
+// }
+
+// ============================================================
+// Hook 8: FigCaptureSessionCreate - mediaserverd C 函数（暂注释）
+// ============================================================
+// %hookf(void *, FigCaptureSessionCreate, void *allocator) {
+//     VCamLog(@"[%@] FigCaptureSessionCreate called", VCamProcessName());
+//     void *result = %orig;
+//     VCamLog(@"[%@] FigCaptureSessionCreate -> %p", VCamProcessName(), result);
+//     return result;
+// }
+
+// ============================================================
+// Hook 9: FigCaptureSessionSetConfiguration - mediaserverd C 函数（暂注释）
+// ============================================================
+// %hookf(void, FigCaptureSessionSetConfiguration, void *session, void *configuration) {
+//     VCamLog(@"[%@] FigCaptureSessionSetConfiguration: session=%p config=%p", VCamProcessName(), session, configuration);
+//     %orig;
+// }
